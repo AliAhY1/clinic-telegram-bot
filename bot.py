@@ -1,105 +1,43 @@
-from dotenv import load_dotenv
 import os
+import asyncio
 import requests
+from dotenv import load_dotenv
+from aiohttp import web
 
-# تحميل ملف .env من الجذر
-load_dotenv()
-
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
     ConversationHandler,
+    ContextTypes,
     filters,
 )
 
-# استيراد الملفات من داخل مجلد telegram_bot
+# تحميل env
+load_dotenv()
+
+# استيراد ملفات البوت
 from telegram_bot.handlers.conversation import (
-    start_booking,
-    handle_name,
-    handle_gender,
-    handle_phone_method,
-    handle_phone_input,
-    handle_province,
-    handle_city_input,
-    handle_notes,
-    handle_confirm,
-    invalid_button,
-    invalid_text,
-    cancel,
+    start_booking, handle_name, handle_gender, handle_phone_method,
+    handle_phone_input, handle_province, handle_city_input,
+    handle_notes, handle_confirm, invalid_button, invalid_text, cancel
 )
 
 from telegram_bot.states import (
-    STATE_NAME,
-    STATE_GENDER,
-    STATE_PHONE_METHOD,
-    STATE_PHONE_INPUT,
-    STATE_CITY_PROVINCE,
-    STATE_CITY_INPUT,
-    STATE_NOTES,
-    STATE_CONFIRM,
+    STATE_NAME, STATE_GENDER, STATE_PHONE_METHOD, STATE_PHONE_INPUT,
+    STATE_CITY_PROVINCE, STATE_CITY_INPUT, STATE_NOTES, STATE_CONFIRM
 )
 
 from telegram_bot.utils.messages import WELCOME_MESSAGE
-from telegram import ReplyKeyboardMarkup, Update
-from telegram.ext import CallbackContext
 
 
 # ---------------------------------------------------------
-#  🔥 1) Handler لالتقاط chat_id + username + phone + photo
+#  /start
 # ---------------------------------------------------------
-async def capture_user_info(update: Update, context: CallbackContext):
-
-    if not update.message:
-        return
-
-    chat = update.message.chat
-
-    chat_id = chat.id
-    username = chat.username
-    first_name = chat.first_name
-    last_name = chat.last_name
-    phone = None
-    photo_url = None
-
-    # إذا المستخدم أرسل رقم هاتفه كبطاقة Contact
-    if update.message.contact:
-        phone = update.message.contact.phone_number
-
-    # محاولة جلب الصورة الشخصية
-    try:
-        photos = await context.bot.get_user_profile_photos(chat_id)
-        if photos.total_count > 0:
-            file_id = photos.photos[0][0].file_id
-            file = await context.bot.get_file(file_id)
-            photo_url = file.file_path
-    except:
-        pass
-
-    # إرسال البيانات للـ Laravel
-    try:
-        requests.post(
-            "https://monometrical-edward-peripherally.ngrok-free.dev/api/save-telegram-data",
-            json={
-                "chat_id": chat_id,
-                "username": username,
-                "first_name": first_name,
-                "last_name": last_name,
-                "phone": phone,
-                "photo_url": photo_url,
-            },
-        )
-    except Exception as e:
-        print("❌ Error sending Telegram data:", e)
-
-
-# ---------------------------------------------------------
-#  /start — رسالة الترحيب + زر حجز موعد
-# ---------------------------------------------------------
-async def start(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["حجز موعد"]]
-
     await update.message.reply_text(
         WELCOME_MESSAGE,
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
@@ -107,33 +45,37 @@ async def start(update, context):
 
 
 # ---------------------------------------------------------
-#  /help — مساعدة بسيطة
+#  /help
 # ---------------------------------------------------------
-async def help_cmd(update, context):
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("للبدء بحجز موعد، اضغط على زر (حجز موعد).")
 
 
 # ---------------------------------------------------------
-#  إنشاء ConversationHandler
+#  تشغيل البوت + Webhook Server
 # ---------------------------------------------------------
-def build_conversation_handler():
+async def main():
+    TOKEN = os.getenv("BOT_TOKEN")
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    PORT = int(os.environ.get("PORT", 8080))
 
-    return ConversationHandler(
+    # إنشاء التطبيق
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    # Handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+
+    conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^حجز موعد$"), start_booking)],
         states={
             STATE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name)],
             STATE_GENDER: [CallbackQueryHandler(handle_gender)],
             STATE_PHONE_METHOD: [CallbackQueryHandler(handle_phone_method)],
-            STATE_PHONE_INPUT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_phone_input)
-            ],
+            STATE_PHONE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_phone_input)],
             STATE_CITY_PROVINCE: [CallbackQueryHandler(handle_province)],
-            STATE_CITY_INPUT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_city_input)
-            ],
-            STATE_NOTES: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_notes)
-            ],
+            STATE_CITY_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_city_input)],
+            STATE_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_notes)],
             STATE_CONFIRM: [CallbackQueryHandler(handle_confirm)],
         },
         fallbacks=[
@@ -144,35 +86,34 @@ def build_conversation_handler():
         allow_reentry=True,
     )
 
+    app.add_handler(conv_handler)
 
-# ---------------------------------------------------------
-#  تشغيل البوت
-# ---------------------------------------------------------
-def main():
-    TOKEN = os.getenv("BOT_TOKEN")
-    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    # -----------------------------
+    #  aiohttp Webhook Server
+    # -----------------------------
+    async def handle(request):
+        data = await request.json()
+        update = Update.de_json(data, app.bot)
+        await app.process_update(update)
+        return web.Response(text="OK")
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    aio_app = web.Application()
+    aio_app.router.add_post(f"/{TOKEN}", handle)
 
-    # 🔥 يلتقط كل الرسائل ويحفظ chat_id + username + phone + photo
-    app.add_handler(MessageHandler(filters.ALL, capture_user_info))
+    # إعداد الويب هوك
+    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
-    # أوامر عامة
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
+    print("🤖 Webhook server is running on Railway...")
 
-    # محادثة الحجز
-    app.add_handler(build_conversation_handler())
+    # تشغيل السيرفر
+    runner = web.AppRunner(aio_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
 
-    print("🤖 البوت يعمل الآن باستخدام Webhook...")
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ["PORT"]),   # ← أهم تعديل
-        url_path=TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
-    )
+    # إبقاء البوت شغال
+    await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
