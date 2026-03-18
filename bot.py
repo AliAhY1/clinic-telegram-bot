@@ -168,7 +168,7 @@ def main():
 
     app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ.get("PORT"))
+        port=int(os.environ["PORT"]),   # ← أهم تعديل
         url_path=TOKEN,
         webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
     )
