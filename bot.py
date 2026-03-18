@@ -99,6 +99,7 @@ async def main():
 
     aio_app = web.Application()
     aio_app.router.add_post(f"/{TOKEN}", handle)
+    aio_app.router.add_post(f"/{TOKEN}/", handle)
 
     # إعداد الويب هوك
     await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
