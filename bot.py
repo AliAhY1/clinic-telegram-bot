@@ -1,11 +1,9 @@
-# bot.py
-
 from dotenv import load_dotenv
 import os
 import requests
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+# تحميل ملف .env من الجذر
+load_dotenv()
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -16,7 +14,8 @@ from telegram.ext import (
     filters,
 )
 
-from handlers.conversation import (
+# استيراد الملفات من داخل مجلد telegram_bot
+from telegram_bot.handlers.conversation import (
     start_booking,
     handle_name,
     handle_gender,
@@ -28,10 +27,10 @@ from handlers.conversation import (
     handle_confirm,
     invalid_button,
     invalid_text,
-    cancel,  # ← مهم جداً
+    cancel,
 )
 
-from states import (
+from telegram_bot.states import (
     STATE_NAME,
     STATE_GENDER,
     STATE_PHONE_METHOD,
@@ -42,7 +41,7 @@ from states import (
     STATE_CONFIRM,
 )
 
-from utils.messages import WELCOME_MESSAGE
+from telegram_bot.utils.messages import WELCOME_MESSAGE
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 
@@ -138,7 +137,7 @@ def build_conversation_handler():
             STATE_CONFIRM: [CallbackQueryHandler(handle_confirm)],
         },
         fallbacks=[
-            CommandHandler("cancel", cancel),  
+            CommandHandler("cancel", cancel),
             CallbackQueryHandler(invalid_button),
             MessageHandler(filters.TEXT & ~filters.COMMAND, invalid_text),
         ],
@@ -169,7 +168,7 @@ def main():
 
     app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 10000)),
+        port=int(os.getenv("PORT", 8080)),
         url_path=TOKEN,
         webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
     )
