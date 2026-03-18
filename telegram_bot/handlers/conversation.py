@@ -11,7 +11,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 
-from states import (
+from telegram_bot.states import (
     STATE_NAME,
     STATE_GENDER,
     STATE_PHONE_METHOD,
