@@ -151,6 +151,7 @@ def build_conversation_handler():
 # ---------------------------------------------------------
 def main():
     TOKEN = os.getenv("BOT_TOKEN")
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -164,8 +165,14 @@ def main():
     # محادثة الحجز
     app.add_handler(build_conversation_handler())
 
-    print("🤖 البوت يعمل الآن...")
-    app.run_polling()
+    print("🤖 البوت يعمل الآن باستخدام Webhook...")
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.getenv("PORT", 10000)),
+        url_path=TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
+    )
 
 
 if __name__ == "__main__":
