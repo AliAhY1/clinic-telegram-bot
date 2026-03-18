@@ -1,4 +1,4 @@
-# handlers/conversation.py
+# telegram_bot/handlers/conversation.py
 
 from telegram import (
     Update,
@@ -22,41 +22,39 @@ from telegram_bot.states import (
     STATE_CONFIRM,
 )
 
-from utils.messages import *
-from utils.validators import validate_name, validate_phone, validate_city_input
-from utils.api import create_booking, check_existing_booking
-from utils.photos import get_user_photo
+from telegram_bot.utils.messages import *
+from telegram_bot.utils.validators import validate_name, validate_phone, validate_city_input
+from telegram_bot.utils.api import create_booking, check_existing_booking, get_patient_by_chat_id
+from telegram_bot.utils.photos import get_user_photo
+
 
 # ---------------------------------------------------------
 #  حماية الـ Flow
-
+# ---------------------------------------------------------
 
 async def invalid_button(update, context):
     query = update.callback_query
     await query.answer()
 
     await query.edit_message_text(
-        "هذه الرسالة لم تعد صالحة للاستخدام.\n" "يرجى المتابعة من الرسالة الأخيرة."
+        "هذه الرسالة لم تعد صالحة للاستخدام.\nيرجى المتابعة من الرسالة الأخيرة."
     )
 
 
 async def invalid_text(update, context):
     await update.message.reply_text(
-        "الرجاء الالتزام بالخطوة الحالية.\n" "يرجى متابعة الإجابات حسب التعليمات."
+        "الرجاء الالتزام بالخطوة الحالية.\nيرجى متابعة الإجابات حسب التعليمات."
     )
-
-
-# ---------------------------------------------------------
 
 
 # ---------------------------------------------------------
 #  /start → زر "حجز موعد"
 # ---------------------------------------------------------
-async def start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # إعادة ضبط أي flow عالق
-    context.user_data["in_flow"] = False
 
+async def start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["in_flow"] = False
     context.user_data["in_flow"] = True
+
     await update.message.reply_text(ASK_NAME, reply_markup=ReplyKeyboardRemove())
     return STATE_NAME
 
@@ -64,6 +62,7 @@ async def start_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  /cancel → إلغاء العملية
 # ---------------------------------------------------------
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["in_flow"] = False
     await update.message.reply_text("تم إلغاء العملية.")
@@ -73,6 +72,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  إدخال الاسم
 # ---------------------------------------------------------
+
 async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
 
@@ -98,6 +98,7 @@ async def handle_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  اختيار الجنس
 # ---------------------------------------------------------
+
 async def handle_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -123,6 +124,7 @@ async def handle_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  اختيار طريقة إدخال الرقم
 # ---------------------------------------------------------
+
 async def handle_phone_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -131,27 +133,19 @@ async def handle_phone_method(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if method == "use_telegram":
 
-        # 1) محاولة جلب الرقم من contact (أفضل طريقة)
-        phone = None
-        if "phone" in context.user_data:
-            phone = context.user_data["phone"]
+        phone = context.user_data.get("phone")
 
-        # 2) محاولة جلب الرقم من قاعدة البيانات (إذا كان المريض مسجل مسبقاً)
         if not phone:
-            from utils.api import get_patient_by_chat_id
-
             patient = get_patient_by_chat_id(update.effective_user.id)
             if patient and patient.get("phone"):
                 phone = patient["phone"]
 
-        # 3) إذا ما لقينا رقم → نطلبه من المستخدم
         if not phone:
             await query.edit_message_text(
-                "لا يمكن جلب رقم الهاتف من تلغرام.\n" "يرجى إدخاله يدويًا."
+                "لا يمكن جلب رقم الهاتف من تلغرام.\nيرجى إدخاله يدويًا."
             )
             return STATE_PHONE_INPUT
 
-        # 4) التحقق من وجود حجز سابق
         check = check_existing_booking(phone)
         if check.get("blocked"):
             msg = "لديك حجز سابق لم يتم الانتهاء منه.\n"
@@ -179,6 +173,7 @@ async def handle_phone_method(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ---------------------------------------------------------
 #  إدخال رقم الهاتف يدويًا
 # ---------------------------------------------------------
+
 async def handle_phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
 
@@ -186,7 +181,6 @@ async def handle_phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("رقم الهاتف غير صالح. يرجى إدخال رقم صحيح.")
         return STATE_PHONE_INPUT
 
-    #  التحقق من وجود حجز سابق
     check = check_existing_booking(phone)
 
     if check.get("blocked"):
@@ -211,6 +205,7 @@ async def handle_phone_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ---------------------------------------------------------
 #  إرسال قائمة المحافظات
 # ---------------------------------------------------------
+
 async def ask_province(update_or_query, context):
     provinces = [
         ["دمشق", "ريف دمشق", "حمص"],
@@ -240,6 +235,7 @@ async def ask_province(update_or_query, context):
 # ---------------------------------------------------------
 #  اختيار المحافظة
 # ---------------------------------------------------------
+
 async def handle_province(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -254,6 +250,7 @@ async def handle_province(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  إدخال المدينة/المنطقة
 # ---------------------------------------------------------
+
 async def handle_city_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     city = update.message.text.strip()
 
@@ -270,15 +267,14 @@ async def handle_city_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  إدخال الملاحظات
 # ---------------------------------------------------------
+
 async def handle_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     notes = update.message.text.strip()
     context.user_data["notes"] = "" if notes == "لا" else notes
 
-    # سحب صورة المريض
     photo_url = await get_user_photo(update.get_bot(), update.effective_user.id)
     context.user_data["photo_url"] = photo_url
 
-    # عرض التأكيد
     summary = (
         f"{CONFIRM_HEADER}"
         f"الاسم: {context.user_data['name']}\n"
@@ -303,6 +299,7 @@ async def handle_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 #  تأكيد أو إلغاء
 # ---------------------------------------------------------
+
 async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -312,12 +309,11 @@ async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["in_flow"] = False
         return ConversationHandler.END
 
-    # إرسال البيانات إلى Laravel
     data = {
         "name": context.user_data["name"],
         "gender": context.user_data["gender"],
         "phone": context.user_data["phone"],
-        "province": context.user_data["province"],  # ← تمت إضافتها
+        "province": context.user_data["province"],
         "city": context.user_data["city"],
         "notes": context.user_data["notes"],
         "telegram_username": update.effective_user.username,
